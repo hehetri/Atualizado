@@ -58,6 +58,34 @@ public class RelayServer extends Thread {
     protected void debug(String msg) {
         Main.debug("relayServer [" + this.port + "]: "+ msg);
     }
+
+    private static String opcodeHex(byte[] data) {
+    	if (data == null || data.length < 2)
+    		return "----";
+    	return String.format("%02X%02X", data[1] & 0xFF, data[0] & 0xFF);
+    }
+
+    private static int packetLength(byte[] data) {
+    	if (data == null || data.length < 4)
+    		return -1;
+    	return (data[2] & 0xFF) | (data[3] & 0xFF) << 8;
+    }
+
+    private static String payloadHex(byte[] data, int payloadLength) {
+    	if (data == null || payloadLength <= 0)
+    		return "(empty)";
+    	int available = Math.max(0, data.length - 4);
+    	int actual = Math.min(payloadLength, available);
+    	if (actual == 0)
+    		return "(empty)";
+    	StringBuilder sb = new StringBuilder(actual * 3);
+    	for (int i = 0; i < actual; i++) {
+    		if (i > 0)
+    			sb.append(' ');
+    		sb.append(String.format("%02X", data[4 + i] & 0xFF));
+    	}
+    	return sb.toString();
+    }
     
     public static boolean Ipbanned(InetAddress addressa){
     	String tempip = addressa.getHostAddress();
@@ -94,6 +122,9 @@ public class RelayServer extends Thread {
         		  int ret = 0;
         		  ret+=(data[1] & 0xFF);
         		  ret+=(data[0] & 0xFF) << (8);
+		  int plen = packetLength(data);
+		  Main.debug("relayServer [" + relaySocket.getLocalPort() + "]: [" + opcodeHex(data) + "] from=" + address.getHostAddress() + ":" + portout + " len=" + plen);
+		  Main.debug("relayServer [" + relaySocket.getLocalPort() + "]: DATA: " + payloadHex(data, plen));
         		  Packet pack = new Packet();
                   switch (ret)
                   {

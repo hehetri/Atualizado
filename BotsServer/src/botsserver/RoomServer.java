@@ -17,19 +17,6 @@ public class RoomServer extends Thread {
 		Main.debug("RoomServer[11011]: " + msg);
 	}
 
-	private static String opcodeHex(byte[] data)
-	{
-		if (data == null || data.length < 2)
-			return "----";
-		return String.format("%02x%02x", data[1] & 0xFF, data[0] & 0xFF).toLowerCase();
-	}
-
-	private static int packetLength(byte[] data)
-	{
-		if (data == null || data.length < 4)
-			return -1;
-		return (data[2] & 0xFF) | (data[3] & 0xFF) << 8;
-	}
 	
 	public RoomServer(int port, Lobby lobbi)
 	{
@@ -55,7 +42,6 @@ public class RoomServer extends Thread {
 					InetAddress address = packet.getAddress();
 					int port = packet.getPort();
 					byte[] data = packet.getData();
-					debug("opcode="+opcodeHex(data)+" len="+packetLength(data)+" from="+address+":"+port);
 
 					if (data[0]==(byte)0xC9 && data[1]==(byte)0x00) {
 						int numb = (data[4] & 0xFF) | (data[5] & 0xFF) << 8;
