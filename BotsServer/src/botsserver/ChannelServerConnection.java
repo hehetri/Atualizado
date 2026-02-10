@@ -149,11 +149,8 @@ public class ChannelServerConnection extends Thread{
                 }
                 case 0x27A6:
                 {
-                    pack.getInt(2);
-                    pack.getInt(2);
-                    String opcode = String.format("%04x", cmd).toLowerCase();
-                    byte[] payload = new byte[Math.max(0, pack.getLen() - pack.getreadStart())];
-                    System.arraycopy(packet, 4 + pack.getreadStart(), payload, 0, payload.length);
+                    byte[] payload = new byte[Math.max(0, pack.getLen())];
+                    System.arraycopy(packet, 4, payload, 0, payload.length);
                     chatCommandHandler.handle(bot, new BinaryPacketReader(payload));
                     break;
                 }
@@ -827,24 +824,30 @@ public class ChannelServerConnection extends Thread{
     {
         try
         {
-            byte[] encryptedHeader = readFully(HEADER_SIZE);
-            if (encryptedHeader == null)
+            byte[] networkHeader = readFully(HEADER_SIZE);
+            if (networkHeader == null)
                 return null;
-            byte[] header = xorEd(encryptedHeader);
+
+            int rawLen = bytetoint(networkHeader, 2);
+            int xorLen = bytetoint(xorEd(networkHeader), 2);
+            boolean useXor = isValidLength(xorLen) && !isValidLength(rawLen);
+            byte[] header = useXor ? xorEd(networkHeader) : networkHeader;
+            int plen = bytetoint(header, 2);
+
             if (bytetoint(header, 0) == 0xFFFF)
                 return null;
-            int plen = bytetoint(header, 2);
-            if (plen < 0 || plen > MAX_PACKET_SIZE) {
-                debug("Invalid packet length: " + plen);
+            if (!isValidLength(plen)) {
+                debug("Invalid packet length: " + plen + " (raw=" + rawLen + ", xor=" + xorLen + ")");
                 return null;
             }
+
             ByteBuffer buffer = ByteBuffer.allocate(plen + 4);
             buffer.put(header);
             if (plen >= 1) {
-                byte[] encryptedBody = readFully(plen);
-                if (encryptedBody == null)
+                byte[] body = readFully(plen);
+                if (body == null)
                     return null;
-                buffer.put(xorEd(encryptedBody));
+                buffer.put(useXor ? xorEd(body) : body);
             }
             return buffer.array();
         } catch (Exception e)
@@ -852,6 +855,11 @@ public class ChannelServerConnection extends Thread{
             debug("Error (read): " + e);
             return null;
         }
+    }
+
+    private boolean isValidLength(int len)
+    {
+        return len >= 0 && len <= MAX_PACKET_SIZE;
     }
 
     private byte[] xorEd(byte[] data)
