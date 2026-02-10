@@ -209,6 +209,29 @@ public class Room {
 		if (moblistMap!=mapId)
 			refreshSectorMoblist(mapId);
 	}
+
+	private int calculateSectorExpReward(int baseExp, int mapLevel, int playerLevel)
+	{
+		if (baseExp <= 0)
+			return 0;
+		int levelDiff = playerLevel - mapLevel;
+		double multiplier;
+		if (levelDiff <= 4)
+			multiplier = 1.0;
+		else if (levelDiff <= 10)
+			multiplier = 0.75;
+		else if (levelDiff <= 20)
+			multiplier = 0.55;
+		else if (levelDiff <= 35)
+			multiplier = 0.40;
+		else
+			multiplier = 0.30;
+
+		double minimumPercent = 0.20;
+		double effectiveMultiplier = Math.max(multiplier, minimumPercent);
+		int reward = (int)Math.round(baseExp * effectiveMultiplier);
+		return reward < 1 ? 1 : reward;
+	}
 	
 	public int GhostRoomCheck()
 	{
@@ -512,12 +535,12 @@ public class Room {
         	int gigas = (int)100*MapValues[1]*(1+MapValues[3]);
         	for (int i = 0; i<8; i++)
         		if (bot[i]!=null){
-        			expp[i] += MapValues[1]<(bot[i].level-10) ? (int)exp*0.25 : (MapValues[1]<(bot[i].level-4) ? (int)exp*0.5 : exp);
+        			expp[i] += calculateSectorExpReward((int)exp, MapValues[1], bot[i].level);
         			winner[i]=1;
         		}
         	boolean triggerkill=true;
-            for (int i = 0; i<Moblist.length; i++)
-            	if (this.Moblist[1][num]==1 && this.Mobkilled[num]!=-1)
+            for (int i = 0; i<Moblist[1].length; i++)
+            	if (this.Moblist[1][i]==1 && this.Mobkilled[i]!=-1)
             		triggerkill=false;
             
             if (roommode==2 && !triggerkill) {
