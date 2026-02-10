@@ -775,6 +775,13 @@ public class ChannelServerConnection extends Thread{
                 {
                 	break;
                 }
+                case 0x3F2B:
+                {
+                    int payloadLength = Math.max(0, bytetoint(packet, 2));
+                    debug("[3F2B] from=" + socket.getInetAddress().getHostAddress() + ":" + socket.getPort() + " len=" + payloadLength);
+                    debug("[3F2B] DATA: " + payloadHexDump(packet, payloadLength));
+                    break;
+                }
                 default:
                 {
                     debug("Unknown packet opcode=" + String.format("%04x", cmd).toLowerCase() + " size=" + bytetoint(packet, 2));
@@ -799,6 +806,21 @@ public class ChannelServerConnection extends Thread{
         return buffer;
     }
     
+    private String payloadHexDump(byte[] packet, int payloadLength)
+    {
+        if (packet == null || packet.length <= 4 || payloadLength <= 0)
+            return "(empty)";
+        int available = Math.max(0, packet.length - 4);
+        int actual = Math.min(payloadLength, available);
+        StringBuilder sb = new StringBuilder(actual * 3);
+        for (int i = 0; i < actual; i++) {
+            if (i > 0)
+                sb.append(' ');
+            sb.append(String.format("%02X", packet[4 + i] & 0xFF));
+        }
+        return sb.toString();
+    }
+
     public int getcmd(byte[] packet)
     {
     	int ret = 0;
