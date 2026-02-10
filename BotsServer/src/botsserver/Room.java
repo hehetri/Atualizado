@@ -7,6 +7,11 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class Room {
+	private static final double MIN_LOW_LEVEL_MAP_EXP_PERCENT = 0.30;
+	private static final int LOW_LEVEL_MAP_NO_PENALTY_DIFF = 4;
+	private static final int LOW_LEVEL_MAP_HALF_EXP_DIFF = 10;
+	private static final double LOW_LEVEL_MAP_MIN_MULTIPLIER = 0.25;
+	
 	protected BotClass[] bot = new BotClass[8];
 	protected int[] port = new int[8];
 	protected boolean[] closedslot = new boolean[8];
@@ -69,6 +74,35 @@ public class Room {
 	public void debug(String msg)
 	{
 		Main.debug("RoomThread: "+msg);
+	}
+
+	private double getLowLevelMapExpMultiplier(int levelDiff)
+	{
+		if (levelDiff<=LOW_LEVEL_MAP_NO_PENALTY_DIFF)
+			return 1;
+		if (levelDiff<=LOW_LEVEL_MAP_HALF_EXP_DIFF) {
+			double reductionWindow = LOW_LEVEL_MAP_HALF_EXP_DIFF-LOW_LEVEL_MAP_NO_PENALTY_DIFF;
+			double normalizedDiff = (levelDiff-LOW_LEVEL_MAP_NO_PENALTY_DIFF)/reductionWindow;
+			return 1-(normalizedDiff*0.5);
+		}
+		double multiplier = 0.5-((levelDiff-LOW_LEVEL_MAP_HALF_EXP_DIFF)*0.025);
+		return Math.max(LOW_LEVEL_MAP_MIN_MULTIPLIER, multiplier);
+	}
+
+	private int applyLowLevelMapExpReduction(double baseExp, int mapLevel, int playerLevel)
+	{
+		int baseExpInt = (int)baseExp;
+		if (baseExpInt<=0)
+			return 0;
+
+		int levelDiff = playerLevel-mapLevel;
+		if (levelDiff<=0)
+			return baseExpInt;
+
+		double multiplier = getLowLevelMapExpMultiplier(levelDiff);
+		int reducedExp = (int)(baseExpInt*multiplier);
+		int minimumExp = (int)(baseExpInt*MIN_LOW_LEVEL_MAP_EXP_PERCENT);
+		return Math.max(reducedExp, minimumExp);
 	}
 	
 	public void RoomPacket()
@@ -508,13 +542,13 @@ public class Room {
             double bonusweekend=0.5;
             if (dayOfWeek==1 || dayOfWeek==7)
             	bonusweekend=1;
-        	double exp = (MapValues[0]/4*Math.sqrt(MapValues[1])*(1+MapValues[3])*bonusweekend*RuleBonus);
-        	int gigas = (int)100*MapValues[1]*(1+MapValues[3]);
-        	for (int i = 0; i<8; i++)
-        		if (bot[i]!=null){
-        			expp[i] += MapValues[1]<(bot[i].level-10) ? (int)exp*0.25 : (MapValues[1]<(bot[i].level-4) ? (int)exp*0.5 : exp);
-        			winner[i]=1;
-        		}
+	        double exp = (MapValues[0]/4*Math.sqrt(MapValues[1])*(1+MapValues[3])*bonusweekend*RuleBonus);
+	        int gigas = (int)100*MapValues[1]*(1+MapValues[3]);
+	        for (int i = 0; i<8; i++)
+	        	if (bot[i]!=null){
+	        		expp[i] += applyLowLevelMapExpReduction(exp, MapValues[1], bot[i].level);
+	        		winner[i]=1;
+	        	}
         	boolean triggerkill=true;
             for (int i = 0; i<Moblist.length; i++)
             	if (this.Moblist[1][num]==1 && this.Mobkilled[num]!=-1)
