@@ -2,6 +2,7 @@ package botsserver;
 
 import java.sql.ResultSet;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +24,7 @@ public class Room {
 	protected int[] roomposition = new int[8];
 	protected boolean[][] roomready = new boolean[8][2];
 	protected int[] statmod = {1, 1, 1, 1, 1};
+	protected Map<Integer, Integer> statOverride = new HashMap<Integer, Integer>();
 	protected int[][] ips = new int[8][4];
 	protected int[] deadSp = {4,4,4,4,4,4,4,4};
 	protected boolean[] dead = new boolean[8];
@@ -122,6 +124,32 @@ public class Room {
 	    	refreshSectorMoblist(this.map[1]);
     	//if (this.roommode==2)
     	//	event(1);
+	}
+
+	public Map<Integer, Integer> getStatOverride()
+	{
+		return statOverride;
+	}
+
+	public void clearStatOverride()
+	{
+		statOverride.clear();
+		resetStatMod();
+	}
+
+	public void setStatOverride(int stat, int value)
+	{
+		statOverride.put(stat, value);
+		if (stat == GameChatCommandHandler.STAT_ATT_TRANS_GAUGE)
+			statmod[1] = value;
+		if (stat == GameChatCommandHandler.STAT_SPEED)
+			statmod[3] = value;
+	}
+
+	private void resetStatMod()
+	{
+		statmod[1] = 1;
+		statmod[3] = 1;
 	}
 	
 	public void event(int typ)

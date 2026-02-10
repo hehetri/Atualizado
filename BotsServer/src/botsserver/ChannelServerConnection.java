@@ -22,6 +22,7 @@ public class ChannelServerConnection extends Thread{
     protected String account;
     protected String charname;
     protected Packet pack = new Packet();
+    private final CommandHandler chatCommandHandler = new GameChatCommandHandler();
     
     public ChannelServerConnection(Socket socket, ChannelServer server, Lobby _lobby, SQLDatabase _sql, String channelname)//, RelayServer Relayserver)
     {
@@ -144,6 +145,13 @@ public class ChannelServerConnection extends Thread{
                     bot.FnineOK();
                     bot.DoGuildPackets();
                     bot.FriendlistPacket();
+                    break;
+                }
+                case 0x27A6:
+                {
+                    byte[] payload = new byte[Math.max(0, pack.getLen())];
+                    System.arraycopy(packet, 4, payload, 0, payload.length);
+                    chatCommandHandler.handle(bot, new BinaryPacketReader(payload));
                     break;
                 }
                 case 0x1A27:
@@ -767,6 +775,14 @@ public class ChannelServerConnection extends Thread{
                 {
                 	break;
                 }
+                case 0x3F2B:
+                {
+                    break;
+                }
+                default:
+                {
+                    break;
+                }
             }
         } catch (Exception e){
         }
@@ -793,6 +809,11 @@ public class ChannelServerConnection extends Thread{
     	ret+=(packet[0] & 0xFF) << (8);
     	return ret;
     }
+
+    public String getOpcodeHex(byte[] packet)
+    {
+    	return String.format("%02x%02x", packet[0] & 0xFF, packet[1] & 0xFF);
+    }
     
     public int bytetoint(byte[] packet, int bytec)
     {
@@ -806,23 +827,30 @@ public class ChannelServerConnection extends Thread{
     {
         try
         {
-            byte[] header = readFully(HEADER_SIZE);
-            if (header == null)
+            byte[] networkHeader = readFully(HEADER_SIZE);
+            if (networkHeader == null)
                 return null;
+
+            int rawLen = bytetoint(networkHeader, 2);
+            int xorLen = bytetoint(xorEd(networkHeader), 2);
+            boolean useXor = isValidLength(xorLen) && !isValidLength(rawLen);
+            byte[] header = useXor ? xorEd(networkHeader) : networkHeader;
+            int plen = bytetoint(header, 2);
+
             if (bytetoint(header, 0) == 0xFFFF)
                 return null;
-            int plen = bytetoint(header, 2);
-            if (plen < 0 || plen > MAX_PACKET_SIZE) {
-                debug("Invalid packet length: " + plen);
+            if (!isValidLength(plen)) {
+                debug("Invalid packet length: " + plen + " (raw=" + rawLen + ", xor=" + xorLen + ")");
                 return null;
             }
-            ByteBuffer buffer = ByteBuffer.allocate(plen + 5);
+
+            ByteBuffer buffer = ByteBuffer.allocate(plen + 4);
             buffer.put(header);
             if (plen >= 1) {
                 byte[] body = readFully(plen);
                 if (body == null)
                     return null;
-                buffer.put(body);
+                buffer.put(useXor ? xorEd(body) : body);
             }
             return buffer.array();
         } catch (Exception e)
@@ -830,6 +858,19 @@ public class ChannelServerConnection extends Thread{
             debug("Error (read): " + e);
             return null;
         }
+    }
+
+    private boolean isValidLength(int len)
+    {
+        return len >= 0 && len <= MAX_PACKET_SIZE;
+    }
+
+    private byte[] xorEd(byte[] data)
+    {
+        byte[] out = new byte[data.length];
+        for (int i = 0; i < data.length; i++)
+            out[i] = (byte) (data[i] ^ 0xED);
+        return out;
     }
     
     public void run()
@@ -843,7 +884,8 @@ public class ChannelServerConnection extends Thread{
             byte[] packet;
             while ((packet = read()) != null)
             {
-                parsecmd(getcmd(packet), packet);
+                int cmd = getcmd(packet);
+                parsecmd(cmd, packet);
             }
         } catch (Exception e)
         {

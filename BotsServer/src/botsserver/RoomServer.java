@@ -16,6 +16,7 @@ public class RoomServer extends Thread {
 	public static void debug(String msg) {
 		Main.debug("RoomServer[11011]: " + msg);
 	}
+
 	
 	public RoomServer(int port, Lobby lobbi)
 	{
