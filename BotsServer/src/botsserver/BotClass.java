@@ -25,6 +25,7 @@ public class BotClass {
     protected String account;
     protected String ip;
     protected int roomnum = -1;
+    protected boolean autosell = false;
     protected int lobbynum = 0;
     protected int relaynum = -1;
     protected String botname = "";

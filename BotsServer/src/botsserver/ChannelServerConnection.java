@@ -22,6 +22,7 @@ public class ChannelServerConnection extends Thread{
     protected String account;
     protected String charname;
     protected Packet pack = new Packet();
+    private final CommandHandler chatCommandHandler = new GameChatCommandHandler();
     
     public ChannelServerConnection(Socket socket, ChannelServer server, Lobby _lobby, SQLDatabase _sql, String channelname)//, RelayServer Relayserver)
     {
@@ -144,6 +145,16 @@ public class ChannelServerConnection extends Thread{
                     bot.FnineOK();
                     bot.DoGuildPackets();
                     bot.FriendlistPacket();
+                    break;
+                }
+                case 0x27A6:
+                {
+                    pack.getInt(2);
+                    pack.getInt(2);
+                    String opcode = String.format("%04x", cmd).toLowerCase();
+                    byte[] payload = new byte[Math.max(0, pack.getLen() - pack.getreadStart())];
+                    System.arraycopy(packet, 4 + pack.getreadStart(), payload, 0, payload.length);
+                    chatCommandHandler.handle(bot, new BinaryPacketReader(payload));
                     break;
                 }
                 case 0x1A27:
@@ -767,6 +778,11 @@ public class ChannelServerConnection extends Thread{
                 {
                 	break;
                 }
+                default:
+                {
+                    debug("Unknown packet opcode=" + String.format("%04x", cmd).toLowerCase() + " size=" + bytetoint(packet, 2));
+                    break;
+                }
             }
         } catch (Exception e){
         }
@@ -793,6 +809,11 @@ public class ChannelServerConnection extends Thread{
     	ret+=(packet[0] & 0xFF) << (8);
     	return ret;
     }
+
+    public String getOpcodeHex(byte[] packet)
+    {
+    	return String.format("%02x%02x", packet[0] & 0xFF, packet[1] & 0xFF);
+    }
     
     public int bytetoint(byte[] packet, int bytec)
     {
@@ -806,9 +827,10 @@ public class ChannelServerConnection extends Thread{
     {
         try
         {
-            byte[] header = readFully(HEADER_SIZE);
-            if (header == null)
+            byte[] encryptedHeader = readFully(HEADER_SIZE);
+            if (encryptedHeader == null)
                 return null;
+            byte[] header = xorEd(encryptedHeader);
             if (bytetoint(header, 0) == 0xFFFF)
                 return null;
             int plen = bytetoint(header, 2);
@@ -816,13 +838,13 @@ public class ChannelServerConnection extends Thread{
                 debug("Invalid packet length: " + plen);
                 return null;
             }
-            ByteBuffer buffer = ByteBuffer.allocate(plen + 5);
+            ByteBuffer buffer = ByteBuffer.allocate(plen + 4);
             buffer.put(header);
             if (plen >= 1) {
-                byte[] body = readFully(plen);
-                if (body == null)
+                byte[] encryptedBody = readFully(plen);
+                if (encryptedBody == null)
                     return null;
-                buffer.put(body);
+                buffer.put(xorEd(encryptedBody));
             }
             return buffer.array();
         } catch (Exception e)
@@ -830,6 +852,14 @@ public class ChannelServerConnection extends Thread{
             debug("Error (read): " + e);
             return null;
         }
+    }
+
+    private byte[] xorEd(byte[] data)
+    {
+        byte[] out = new byte[data.length];
+        for (int i = 0; i < data.length; i++)
+            out[i] = (byte) (data[i] ^ 0xED);
+        return out;
     }
     
     public void run()
@@ -843,7 +873,9 @@ public class ChannelServerConnection extends Thread{
             byte[] packet;
             while ((packet = read()) != null)
             {
-                parsecmd(getcmd(packet), packet);
+                int cmd = getcmd(packet);
+                debug("DEBUG opcode=" + getOpcodeHex(packet) + " payloadSize=" + bytetoint(packet, 2));
+                parsecmd(cmd, packet);
             }
         } catch (Exception e)
         {
