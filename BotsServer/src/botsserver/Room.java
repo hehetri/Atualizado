@@ -117,11 +117,11 @@ public class Room {
 	public void SendMessage(boolean all, int num, String message, int color)
 	{
 		packet.addHeader((byte) 0x1A, (byte) 0x27);
-        packet.addByte2((byte) 0x01, (byte) 0x00);
-        packet.addInt(message.length(), 2, false);
-        packet.addInt(color, 2, false);
-        packet.addString(message);
-        packet.addByte((byte)0x00);
+		packet.addByte4((byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00);
+		packet.addInt(color, 1, false);
+		packet.addByte((byte) 0x00);
+		packet.addString(message);
+		packet.addByteArray(new byte[] {(byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00, (byte) 0x00});
         if(all)
     		for (int i = 0; i<8; i++)
     			if(bot[i]!=null)
