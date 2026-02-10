@@ -29,6 +29,8 @@ import java.util.List;
  * server.
  */
 public class LoginServerConnection extends Thread {
+	private static final int HEADER_SIZE = 4;
+	private static final int MAX_PACKET_SIZE = 4096;
 	protected Socket socket;
 	protected InputStream socketIn;
 	protected OutputStream socketOut;
@@ -78,13 +80,14 @@ public class LoginServerConnection extends Thread {
 //			boolean properlogin=phplogin();
 			int bantime = -1;
 			String banstime = "0";
+			ResultSet rs = null;
 			String[] user2 = new String[1];
 			user2[0] = user;
 			// ResultSet rs =
 			// Main.sql.doquery("SELECT * FROM bout_users WHERE username='"+
 			// user2 +"' LIMIT 1");
 			Main.sql.doupdate("UPDATE bout_users SET current_ip='' WHERE last_ip='"+Main.getip(socket)+"'");
-			ResultSet rs = Main.sql.psquery("SELECT * FROM bout_users WHERE username=? LIMIT 1", user2);
+			rs = Main.sql.psquery("SELECT * FROM bout_users WHERE username=? LIMIT 1", user2);
 			if (rs.next()) {
 				this.LOGIN_ID = rs.getInt("id");
 				this.LOGIN_USERNAME = rs.getString("username");
@@ -112,7 +115,8 @@ public class LoginServerConnection extends Thread {
 //				Main.sql.psupdate("INSERT INTO bout_users(`username`,`password`,`banned`,`coins`, `email`, `online`, `current_ip`, `logincount`, `last_ip`, `position`, `forumaccount`) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", user2);
 //				this.LOGIN_ID=1;
 //			}
-			rs.close();
+			closeQuietly(rs);
+			rs = null;
 			if (bantime!=-1){
 				user2= new String[1];
 				user2[0]= banstime;
@@ -135,8 +139,8 @@ public class LoginServerConnection extends Thread {
 					}
 				}
 				}catch(Exception e){System.out.println("time calc error: " +e);}
+				finally { closeQuietly(rs); rs = null; }
 			}
-			rs.close();
 			if (this.LOGIN_ID == 0) {
 				this.LOGIN_RESULT = 1;
 			} else if (!properlogin) {
@@ -156,15 +160,24 @@ public class LoginServerConnection extends Thread {
 		}
 	}
 
+	private void closeQuietly(ResultSet rs) {
+		if (rs != null) {
+			try {
+				rs.close();
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
 	protected void prasecmd(int cmd, byte[] packet)
     {
         try
         {
         	debug(Integer.toString(cmd));
         	this.socketOut.flush();
-            switch (cmd)
-            {
-            	case 0xF82A:
+	            switch (cmd)
+	            {
+	            	case 0xF82A:
             	{
             		String thestring = new String(Arrays.copyOfRange(packet,4,27));
                     packet = Arrays.copyOfRange(packet,27,packet.length);
@@ -175,9 +188,10 @@ public class LoginServerConnection extends Thread {
             		thestring = new String(packet);
                     thestring = removenullbyte(thestring.substring(0,32));
             		this.pass = thestring;
-            		doLogin();
-            	}
-            	default:
+	            		doLogin();
+	            		break;
+	            	}
+	            	default:
             		this.socketOut.flush();
             }
         }catch (Exception e){}
@@ -359,41 +373,48 @@ public class LoginServerConnection extends Thread {
 	 */
     protected byte[] read()
     {
-        ByteBuffer buffer = ByteBuffer.allocate(4);
-        int codePoint;
-        
         try
         {
-            for (int i = 0; i < 4; i++)
-            {
-                codePoint = this.socketIn.read();
-                buffer.put((byte)(codePoint));
-                //buffer.put((byte)(Main.decrypt[codePoint & 0xFF]));
+            byte[] header = readFully(HEADER_SIZE);
+            if (header == null)
+	            return null;
+            int plen = bytetoint(header, 2);
+            if (bytetoint(header, 0)==0xFFFF)
+	            return null;
+            if (plen < 0 || plen > MAX_PACKET_SIZE) {
+	            debug("Invalid packet length: " + plen);
+	            return null;
             }
-            int plen = bytetoint(buffer.array(), 2);
-            if (bytetoint(buffer.array(), 0)==0xFFFF)
-            	return null;
-            byte[] quickstore = buffer.array();
-            debug(Main.bytesToHex(quickstore));
-            buffer = ByteBuffer.allocate(plen+5);
-            buffer.put(quickstore);
+            debug(Main.bytesToHex(header));
+            ByteBuffer buffer = ByteBuffer.allocate(plen+5);
+            buffer.put(header);
             if (plen >= 1)
             {
-                for (int i = 0; i < plen; i++)
-                {
-                    codePoint = this.socketIn.read();
-                    buffer.put((byte)(codePoint));
-                    //buffer.put((byte)Main.decrypt[codePoint & 0xFF]);
-                }
+                byte[] body = readFully(plen);
+                if (body == null)
+	                return null;
+                buffer.put(body);
             }
+            return buffer.array();
         } catch (Exception e)
         {
             debug("Error (read): " + e.getMessage());
             this.server.remove(this.getRemoteAddress());
             return null;
         }
-		return buffer.array();
     }
+
+	private byte[] readFully(int length) throws java.io.IOException {
+		byte[] buffer = new byte[length];
+		int offset = 0;
+		while (offset < length) {
+			int read = this.socketIn.read(buffer, offset, length - offset);
+			if (read == -1)
+				return null;
+			offset += read;
+		}
+		return buffer;
+	}
     
     public int bytetoint(byte[] packet, int bytec)
     {

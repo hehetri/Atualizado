@@ -196,6 +196,7 @@ public class RelayTCPConnection extends Thread {
 	        				relaystore.removeNum(number, num);
         			}catch (Exception e){debug(e.getMessage());}
         			this.socketOut.flush();
+            		break;
             	}
             	default:
             	{
@@ -303,8 +304,10 @@ public class RelayTCPConnection extends Thread {
 	protected void closecon(){
 		if (finalize)
 			return;
+		finalize=true;
 		try{
-			autocheck.cancel(true);
+			if (autocheck != null)
+				autocheck.cancel(true);
 		}catch (Exception e){debug("finalize(runnable) exception: " + e);}
 		try {
 			executor.shutdown();
@@ -318,10 +321,12 @@ public class RelayTCPConnection extends Thread {
 		}catch (Exception e){debug("Error while removing ID: "+e);}
 		try {
 			sql=null;
-			this.socketIn.close();
-			this.socketOut.close();
-			this.socket.close();
-			finalize=true;
+			if (this.socketIn != null)
+				this.socketIn.close();
+			if (this.socketOut != null)
+				this.socketOut.close();
+			if (this.socket != null && !this.socket.isClosed())
+				this.socket.close();
 		}catch (Exception e){debug("Error closing socket resources: " + e);}
     }
 }
